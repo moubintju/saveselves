@@ -3,12 +3,11 @@ import os
 from datetime import datetime
 import logging
 import sys
-import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'stock_screener'))
-from stock_screener import StockScreener
 import json
 import io
-import tempfile
+
+# 添加股票筛选模块到路径
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'stock_screener'))
 
 # 配置日志
 logging.basicConfig(
@@ -17,21 +16,31 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# 创建Flask应用
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-here'
 
-@app.route('/')
+# 配置静态文件和模板路径
+app.static_folder = os.path.join(os.path.dirname(__file__), '..', 'stock_screener', 'static')
+app.template_folder = os.path.join(os.path.dirname(__file__), '..', 'stock_screener', 'templates')
+
+@app.route('/', methods=['GET'])
 def index():
     """主页"""
-    current_date = datetime.now().strftime('%Y-%m-%d')
-    template_path = os.path.join(os.path.dirname(__file__), '..', 'stock_screener', 'templates')
-    app.template_folder = template_path
-    return render_template('index.html', current_date=current_date)
+    try:
+        current_date = datetime.now().strftime('%Y-%m-%d')
+        return render_template('index.html', current_date=current_date)
+    except Exception as e:
+        logger.error(f"Index route error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/screen', methods=['POST'])
 def start_screening():
     """执行筛选 - 同步处理"""
     try:
+        # 导入筛选器（延迟导入避免启动错误）
+        from stock_screener import StockScreener
+        
         data = request.get_json()
         target_date = data.get('date')
         
@@ -43,7 +52,7 @@ def start_screening():
         
         logger.info(f"开始筛选 {target_date} 的自救股票")
         
-        # 创建筛选器实例并直接执行筛选
+        # 创建筛选器实例并执行筛选
         screener = StockScreener()
         results = screener.screen_rescue_stocks(target_date)
         summary = screener.get_screening_summary()
@@ -66,16 +75,16 @@ def start_screening():
             'message': f'筛选失败: {str(e)}'
         }), 500
 
-@app.route('/progress')
+@app.route('/progress', methods=['GET'])
 def get_progress():
-    """获取筛选进度 - Vercel环境下始终返回完成状态"""
+    """获取筛选进度 - Vercel环境下始终返回空闲状态"""
     return jsonify({
         'status': 'idle',
         'progress': 0,
         'message': '请点击开始筛选'
     })
 
-@app.route('/results')
+@app.route('/results', methods=['GET'])
 def get_results():
     """获取筛选结果 - 在Vercel环境下，结果通过/screen接口直接返回"""
     return jsonify({
@@ -97,8 +106,8 @@ def export_excel():
             }), 400
         
         # 创建内存中的Excel文件
-        from io import BytesIO
         import pandas as pd
+        from io import BytesIO
         
         output = BytesIO()
         
@@ -141,8 +150,8 @@ def export_csv():
             }), 400
         
         # 创建内存中的CSV文件
-        from io import StringIO
         import pandas as pd
+        from io import StringIO
         
         output = StringIO()
         
@@ -171,7 +180,7 @@ def export_csv():
             'message': f'导出失败: {str(e)}'
         }), 500
 
-@app.route('/status')
+@app.route('/status', methods=['GET'])
 def get_status():
     """获取服务器状态"""
     return jsonify({
@@ -197,9 +206,11 @@ def internal_error(error):
         'message': '服务器内部错误'
     }), 500
 
-# 确保静态文件和模板路径正确配置
-app.static_folder = os.path.join(os.path.dirname(__file__), '..', 'stock_screener', 'static')
-app.template_folder = os.path.join(os.path.dirname(__file__), '..', 'stock_screener', 'templates')
+# Vercel函数处理程序
+def handler(event, context):
+    """Vercel无服务器函数处理程序"""
+    return app(event, context)
 
-# Vercel需要导出app实例
-# 这个文件被Vercel作为WSGI应用加载
+# 如果直接运行，启动开发服务器
+if __name__ == '__main__':
+    app.run(debug=True)
