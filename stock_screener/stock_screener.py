@@ -1,6 +1,7 @@
 import pandas as pd
 from datetime import datetime, timedelta
 import logging
+import time
 from data_fetcher import StockDataFetcher
 
 logging.basicConfig(level=logging.INFO)
@@ -54,9 +55,13 @@ class StockScreener:
                     'turnover': stock.get('成交额', 0),
                     'market_cap': stock.get('总市值', 0)
                 })
+            
+            # 每处理5只股票增加小延迟，降低请求频率
+            if processed_count % 5 == 0:
+                time.sleep(0.1)  # 100ms延迟
                 
-            # 每处理100只股票记录一次进度
-            if processed_count % 100 == 0:
+            # 每处理10只股票记录一次进度
+            if processed_count % 10 == 0:
                 logger.info(f"已处理 {processed_count}/{total_stocks} 只股票，找到 {len(rescue_stocks)} 只符合条件的股票")
         
         logger.info(f"筛选完成！共找到 {len(rescue_stocks)} 只符合自救条件的股票")

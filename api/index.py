@@ -48,11 +48,10 @@ def test():
 
 @app.route('/screen', methods=['POST'])
 def start_screening():
-    """执行股票筛选 - 支持真实数据和模拟数据"""
+    """执行股票筛选 - 仅使用真实数据"""
     try:
         data = request.get_json()
         target_date = data.get('date')
-        use_real_data = data.get('use_real_data', False)
         
         if not target_date:
             return jsonify({
@@ -60,38 +59,36 @@ def start_screening():
                 'message': '请提供筛选日期'
             })
         
-        logger.info(f"开始筛选 {target_date} 的股票，使用真实数据: {use_real_data}")
+        logger.info(f"开始筛选 {target_date} 的股票")
         
-        if use_real_data:
-            # 尝试使用真实数据
-            try:
-                from stock_screener import StockScreener
-                
-                logger.info("正在创建股票筛选器...")
-                screener = StockScreener()
-                
-                logger.info("开始执行股票筛选...")
-                # 限制股票数量以避免Vercel超时
-                results = screener.screen_rescue_stocks(target_date, max_stocks=50)
-                summary = screener.get_screening_summary()
-                
-                logger.info(f"筛选完成，找到 {len(results)} 只符合条件的股票")
-                
-                return jsonify({
-                    'success': True,
-                    'status': 'completed',
-                    'message': f'筛选完成，找到 {len(results)} 只符合条件的股票',
-                    'results': results,
-                    'summary': summary
-                })
-                
-            except Exception as real_data_error:
-                logger.error(f"真实数据筛选失败: {real_data_error}")
-                # 如果真实数据失败，回退到模拟数据
-                return get_mock_screening_result(target_date, str(real_data_error))
-        else:
-            # 使用模拟数据
-            return get_mock_screening_result(target_date)
+        try:
+            from stock_screener import StockScreener
+            
+            logger.info("正在创建股票筛选器...")
+            screener = StockScreener()
+            
+            logger.info("开始执行股票筛选...")
+            # 限制股票数量并增加延迟以避免Vercel超时
+            results = screener.screen_rescue_stocks(target_date, max_stocks=30)
+            summary = screener.get_screening_summary()
+            
+            logger.info(f"筛选完成，找到 {len(results)} 只符合条件的股票")
+            
+            return jsonify({
+                'success': True,
+                'status': 'completed',
+                'message': f'筛选完成，找到 {len(results)} 只符合条件的股票',
+                'results': results,
+                'summary': summary
+            })
+            
+        except Exception as e:
+            logger.error(f"股票筛选失败: {e}")
+            return jsonify({
+                'success': False,
+                'status': 'error',
+                'message': f'筛选失败: {str(e)}'
+            }), 500
         
     except Exception as e:
         logger.error(f"筛选过程发生错误: {e}")
@@ -100,57 +97,6 @@ def start_screening():
             'status': 'error',
             'message': f'筛选失败: {str(e)}'
         }), 500
-
-def get_mock_screening_result(target_date, error_msg=None):
-    """获取模拟筛选结果"""
-    mock_results = [
-        {
-            'code': '000001',
-            'name': '平安银行',
-            'current_price': 15.50,
-            'change_pct': 2.3,
-            'volume': 1234567,
-            'turnover': 19135000,
-            'market_cap': 30000000000
-        },
-        {
-            'code': '000002',
-            'name': '万科A',
-            'current_price': 18.20,
-            'change_pct': 1.8,
-            'volume': 987654,
-            'turnover': 17975000,
-            'market_cap': 20000000000
-        },
-        {
-            'code': '600036',
-            'name': '招商银行',
-            'current_price': 42.10,
-            'change_pct': 1.5,
-            'volume': 2100000,
-            'turnover': 88410000,
-            'market_cap': 109500000000
-        }
-    ]
-    
-    mock_summary = {
-        'total_count': len(mock_results),
-        'avg_change_pct': 1.87,
-        'avg_volume': 1395404,
-        'total_market_cap': 159500000000
-    }
-    
-    message = f'筛选完成，找到 {len(mock_results)} 只符合条件的股票（模拟数据）'
-    if error_msg:
-        message += f' - 真实数据获取失败: {error_msg[:100]}...'
-    
-    return jsonify({
-        'success': True,
-        'status': 'completed',
-        'message': message,
-        'results': mock_results,
-        'summary': mock_summary
-    })
 
 @app.route('/progress')
 def get_progress():

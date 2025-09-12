@@ -20,13 +20,8 @@
                     <label for="screening-date">筛选日期:</label>
                     <input type="date" id="screening-date" name="screening_date" value="{{ current_date }}">
                 </div>
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="use-real-data" name="use_real_data">
-                        使用真实数据 (可能较慢，如失败会回退到模拟数据)
-                    </label>
-                </div>
                 <button id="start-screening" class="btn btn-primary">开始筛选</button>
+                <p class="note">注: 筛选使用真实股票数据，可能需要1-2分钟时间</p>
             </div>
 
             <div class="criteria-section">

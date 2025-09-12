@@ -2,6 +2,7 @@ import akshare as ak
 import pandas as pd
 from datetime import datetime, timedelta
 import logging
+import time
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -39,6 +40,9 @@ class StockDataFetcher:
     def get_stock_history(self, symbol, days=5):
         """获取股票历史数据"""
         try:
+            # 在每次API调用前增加延迟
+            time.sleep(0.05)  # 50ms延迟
+            
             # 获取历史数据，period可选："daily", "weekly", "monthly"
             # adjust可选："", "qfq", "hfq" 分别表示不复权、前复权、后复权
             hist_data = ak.stock_zh_a_hist(
