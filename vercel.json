@@ -1,6 +1,6 @@
 {
   "functions": {
-    "stock_screener/app.py": {
+    "api/index.py": {
       "maxDuration": 10
     }
   }
