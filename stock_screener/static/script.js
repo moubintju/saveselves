@@ -98,8 +98,16 @@ async function startScreening() {
         const result = await response.json();
         
         if (result.success) {
-            // 开始轮询进度
-            pollProgress();
+            // Vercel版本直接返回结果，不需要轮询
+            if (result.status === 'completed') {
+                updateProgress(100, result.message);
+                displayResults(result.results, result.summary);
+                hideAllSections();
+                resultsSection.style.display = 'block';
+                resetUI();
+            } else {
+                showError(result.message || '筛选处理失败');
+            }
         } else {
             showError(result.message || '筛选启动失败');
         }
@@ -164,8 +172,14 @@ async function loadResults() {
     }
 }
 
+// 存储当前结果数据
+let currentResultsData = [];
+
 // 显示筛选结果
 function displayResults(results, summary) {
+    // 存储当前结果数据供导出使用
+    currentResultsData = results || [];
+    
     // 显示摘要信息
     displaySummary(summary);
     
@@ -188,6 +202,11 @@ function displayResults(results, summary) {
         `;
         resultsTableBody.appendChild(noDataRow);
     }
+}
+
+// 获取当前结果数据
+function getCurrentResults() {
+    return currentResultsData;
 }
 
 // 显示摘要信息
@@ -235,8 +254,17 @@ function createResultRow(stock) {
 // 导出结果
 async function exportResults(format) {
     try {
+        // 获取当前显示的结果数据
+        const currentResults = getCurrentResults();
+        
         const response = await fetch(`/export/${format}`, {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                results: currentResults
+            })
         });
         
         if (response.ok) {
