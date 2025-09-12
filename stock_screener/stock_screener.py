@@ -11,7 +11,7 @@ class StockScreener:
         self.data_fetcher = StockDataFetcher()
         self.screening_results = []
         
-    def screen_rescue_stocks(self, target_date=None, progress_callback=None):
+    def screen_rescue_stocks(self, target_date=None, progress_callback=None, max_stocks=100):
         """筛选可以自救的股票"""
         if target_date is None:
             target_date = datetime.now().strftime("%Y-%m-%d")
@@ -24,13 +24,16 @@ class StockScreener:
             logger.error("无法获取股票数据")
             return []
             
-        total_stocks = len(all_stocks)
-        logger.info(f"共需要筛选 {total_stocks} 只股票")
+        total_stocks = min(len(all_stocks), max_stocks)
+        logger.info(f"共需要筛选 {total_stocks} 只股票 (限制为前{max_stocks}只)")
         
         rescue_stocks = []
         processed_count = 0
         
-        for index, stock in all_stocks.iterrows():
+        # 限制处理的股票数量以避免超时
+        limited_stocks = all_stocks.head(max_stocks)
+        
+        for index, stock in limited_stocks.iterrows():
             processed_count += 1
             stock_code = stock['代码']
             stock_name = stock['名称']

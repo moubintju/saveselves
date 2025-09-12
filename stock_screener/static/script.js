@@ -64,6 +64,8 @@ async function startScreening() {
     }
     
     const screeningDate = document.getElementById('screening-date').value;
+    const useRealData = document.getElementById('use-real-data').checked;
+    
     if (!screeningDate) {
         showError('请选择筛选日期');
         return;
@@ -87,7 +89,8 @@ async function startScreening() {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                date: screeningDate
+                date: screeningDate,
+                use_real_data: useRealData
             })
         });
         
