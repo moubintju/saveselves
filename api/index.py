@@ -1,46 +1,46 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, jsonify, render_template, request
 import os
 from datetime import datetime
-import logging
-import sys
-import json
-import io
 
-# 添加股票筛选模块到路径
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'stock_screener'))
-
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-# 创建Flask应用
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key-here'
 
-# 配置静态文件和模板路径
-app.static_folder = os.path.join(os.path.dirname(__file__), '..', 'stock_screener', 'static')
-app.template_folder = os.path.join(os.path.dirname(__file__), '..', 'stock_screener', 'templates')
+# 配置模板和静态文件路径
+template_dir = os.path.join(os.path.dirname(__file__), '..', 'stock_screener', 'templates')
+static_dir = os.path.join(os.path.dirname(__file__), '..', 'stock_screener', 'static')
 
-@app.route('/', methods=['GET'])
+app.template_folder = template_dir
+app.static_folder = static_dir
+
+@app.route('/')
 def index():
     """主页"""
     try:
         current_date = datetime.now().strftime('%Y-%m-%d')
         return render_template('index.html', current_date=current_date)
     except Exception as e:
-        logger.error(f"Index route error: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({
+            'error': 'Template loading failed',
+            'message': str(e),
+            'template_folder': app.template_folder
+        }), 500
+
+@app.route('/test')
+def test():
+    """测试端点"""
+    return jsonify({
+        'status': 'success',
+        'message': 'API is working',
+        'timestamp': datetime.now().isoformat(),
+        'paths': {
+            'template_folder': app.template_folder,
+            'static_folder': app.static_folder
+        }
+    })
 
 @app.route('/screen', methods=['POST'])
 def start_screening():
-    """执行筛选 - 同步处理"""
+    """筛选功能 - 暂时返回模拟数据"""
     try:
-        # 导入筛选器（延迟导入避免启动错误）
-        from stock_screener import StockScreener
-        
         data = request.get_json()
         target_date = data.get('date')
         
@@ -50,43 +50,62 @@ def start_screening():
                 'message': '请提供筛选日期'
             })
         
-        logger.info(f"开始筛选 {target_date} 的自救股票")
+        # 模拟结果数据
+        mock_results = [
+            {
+                'code': '000001',
+                'name': '平安银行',
+                'current_price': 15.50,
+                'change_pct': 2.3,
+                'volume': 1234567,
+                'turnover': 19135000,
+                'market_cap': 30000000000
+            },
+            {
+                'code': '000002',
+                'name': '万科A',
+                'current_price': 18.20,
+                'change_pct': 1.8,
+                'volume': 987654,
+                'turnover': 17975000,
+                'market_cap': 20000000000
+            }
+        ]
         
-        # 创建筛选器实例并执行筛选
-        screener = StockScreener()
-        results = screener.screen_rescue_stocks(target_date)
-        summary = screener.get_screening_summary()
-        
-        logger.info(f"筛选完成，共找到 {len(results)} 只符合条件的股票")
+        mock_summary = {
+            'total_count': 2,
+            'avg_change_pct': 2.05,
+            'avg_volume': 1111110,
+            'total_market_cap': 50000000000
+        }
         
         return jsonify({
             'success': True,
             'status': 'completed',
-            'message': f'筛选完成，找到 {len(results)} 只符合条件的股票',
-            'results': results,
-            'summary': summary
+            'message': f'筛选完成，找到 {len(mock_results)} 只符合条件的股票（模拟数据）',
+            'results': mock_results,
+            'summary': mock_summary
         })
         
     except Exception as e:
-        logger.error(f"筛选过程发生错误: {e}")
         return jsonify({
             'success': False,
             'status': 'error',
             'message': f'筛选失败: {str(e)}'
         }), 500
 
-@app.route('/progress', methods=['GET'])
+@app.route('/progress')
 def get_progress():
-    """获取筛选进度 - Vercel环境下始终返回空闲状态"""
+    """获取筛选进度"""
     return jsonify({
         'status': 'idle',
         'progress': 0,
         'message': '请点击开始筛选'
     })
 
-@app.route('/results', methods=['GET'])
+@app.route('/results')
 def get_results():
-    """获取筛选结果 - 在Vercel环境下，结果通过/screen接口直接返回"""
+    """获取筛选结果"""
     return jsonify({
         'success': False,
         'message': '请重新执行筛选获取结果'
@@ -94,104 +113,31 @@ def get_results():
 
 @app.route('/export/excel', methods=['POST'])
 def export_excel():
-    """导出Excel - 内存处理"""
-    try:
-        data = request.get_json()
-        results = data.get('results', [])
-        
-        if not results:
-            return jsonify({
-                'success': False,
-                'message': '没有可导出的结果'
-            }), 400
-        
-        # 创建内存中的Excel文件
-        import pandas as pd
-        from io import BytesIO
-        
-        output = BytesIO()
-        
-        # 转换结果为DataFrame
-        df = pd.DataFrame(results)
-        
-        # 写入Excel
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='筛选结果')
-        
-        output.seek(0)
-        
-        filename = f"自救股票筛选结果_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        
-        return send_file(
-            output,
-            as_attachment=True,
-            download_name=filename,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-        
-    except Exception as e:
-        logger.error(f"导出Excel失败: {e}")
-        return jsonify({
-            'success': False,
-            'message': f'导出失败: {str(e)}'
-        }), 500
+    """导出Excel"""
+    return jsonify({
+        'success': False,
+        'message': '导出功能暂时不可用'
+    }), 501
 
 @app.route('/export/csv', methods=['POST'])
 def export_csv():
-    """导出CSV - 内存处理"""
-    try:
-        data = request.get_json()
-        results = data.get('results', [])
-        
-        if not results:
-            return jsonify({
-                'success': False,
-                'message': '没有可导出的结果'
-            }), 400
-        
-        # 创建内存中的CSV文件
-        import pandas as pd
-        from io import StringIO
-        
-        output = StringIO()
-        
-        # 转换结果为DataFrame并写入CSV
-        df = pd.DataFrame(results)
-        df.to_csv(output, index=False, encoding='utf-8-sig')
-        
-        # 转换为BytesIO
-        mem = io.BytesIO()
-        mem.write(output.getvalue().encode('utf-8-sig'))
-        mem.seek(0)
-        
-        filename = f"自救股票筛选结果_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        
-        return send_file(
-            mem,
-            as_attachment=True,
-            download_name=filename,
-            mimetype='text/csv'
-        )
-        
-    except Exception as e:
-        logger.error(f"导出CSV失败: {e}")
-        return jsonify({
-            'success': False,
-            'message': f'导出失败: {str(e)}'
-        }), 500
+    """导出CSV"""
+    return jsonify({
+        'success': False,
+        'message': '导出功能暂时不可用'
+    }), 501
 
-@app.route('/status', methods=['GET'])
+@app.route('/status')
 def get_status():
     """获取服务器状态"""
     return jsonify({
         'status': 'running',
         'timestamp': datetime.now().isoformat(),
-        'environment': 'vercel'
+        'environment': 'vercel-simplified'
     })
 
 @app.errorhandler(404)
 def not_found_error(error):
-    """404错误处理"""
     return jsonify({
         'success': False,
         'message': '页面未找到'
@@ -199,18 +145,11 @@ def not_found_error(error):
 
 @app.errorhandler(500)
 def internal_error(error):
-    """500错误处理"""
-    logger.error(f"服务器内部错误: {error}")
     return jsonify({
         'success': False,
-        'message': '服务器内部错误'
+        'message': '服务器内部错误',
+        'error': str(error)
     }), 500
 
-# Vercel函数处理程序
-def handler(event, context):
-    """Vercel无服务器函数处理程序"""
-    return app(event, context)
-
-# 如果直接运行，启动开发服务器
 if __name__ == '__main__':
     app.run(debug=True)
