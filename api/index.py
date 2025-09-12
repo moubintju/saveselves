@@ -197,6 +197,9 @@ def internal_error(error):
         'message': '服务器内部错误'
     }), 500
 
-# Vercel需要的应用实例
-if __name__ == '__main__':
-    app.run(debug=True)
+# 确保静态文件和模板路径正确配置
+app.static_folder = os.path.join(os.path.dirname(__file__), '..', 'stock_screener', 'static')
+app.template_folder = os.path.join(os.path.dirname(__file__), '..', 'stock_screener', 'templates')
+
+# Vercel需要导出app实例
+# 这个文件被Vercel作为WSGI应用加载
