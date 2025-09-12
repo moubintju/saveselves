@@ -68,6 +68,70 @@ class StockScreener:
         self.screening_results = rescue_stocks
         return rescue_stocks
     
+    def screen_rescue_stocks_batch(self, target_date=None, batch_start=0, batch_size=20):
+        """分批筛选可以自救的股票"""
+        if target_date is None:
+            target_date = datetime.now().strftime("%Y-%m-%d")
+            
+        logger.info(f"开始分批筛选 {target_date} 的自救股票，批次 {batch_start}-{batch_start + batch_size}...")
+        
+        # 获取所有股票
+        all_stocks = self.data_fetcher.get_all_stocks()
+        if all_stocks is None or len(all_stocks) == 0:
+            logger.error("无法获取股票数据")
+            return {
+                'results': [],
+                'total_stocks': 0,
+                'processed_count': 0,
+                'has_more': False
+            }
+            
+        total_stocks = len(all_stocks)
+        logger.info(f"总共有 {total_stocks} 只股票需要筛选")
+        
+        # 获取当前批次的股票
+        batch_end = min(batch_start + batch_size, total_stocks)
+        batch_stocks = all_stocks.iloc[batch_start:batch_end]
+        
+        logger.info(f"当前批次处理 {len(batch_stocks)} 只股票 ({batch_start}-{batch_end})")
+        
+        rescue_stocks = []
+        processed_count = batch_start
+        
+        for index, stock in batch_stocks.iterrows():
+            processed_count += 1
+            stock_code = stock['代码']
+            stock_name = stock['名称']
+            
+            logger.info(f"正在分析: {stock_name}({stock_code}) - {processed_count}/{total_stocks}")
+            
+            # 执行筛选逻辑
+            if self.check_rescue_criteria(stock, stock_code):
+                rescue_stocks.append({
+                    'code': stock_code,
+                    'name': stock_name,
+                    'current_price': stock.get('最新价', 0),
+                    'change_pct': stock.get('涨跌幅', 0),
+                    'volume': stock.get('成交量', 0),
+                    'turnover': stock.get('成交额', 0),
+                    'market_cap': stock.get('总市值', 0)
+                })
+            
+            # 每处理2只股票增加延迟，降低请求频率
+            if (processed_count - batch_start) % 2 == 0:
+                time.sleep(0.2)  # 200ms延迟
+        
+        has_more = batch_end < total_stocks
+        
+        logger.info(f"批次筛选完成！本批次找到 {len(rescue_stocks)} 只符合自救条件的股票")
+        
+        return {
+            'results': rescue_stocks,
+            'total_stocks': total_stocks,
+            'processed_count': processed_count,
+            'has_more': has_more
+        }
+    
     def check_rescue_criteria(self, stock_data, stock_code):
         """检查股票是否符合自救标准"""
         try:

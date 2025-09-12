@@ -48,10 +48,12 @@ def test():
 
 @app.route('/screen', methods=['POST'])
 def start_screening():
-    """执行股票筛选 - 仅使用真实数据"""
+    """执行股票筛选 - 分批处理所有A股"""
     try:
         data = request.get_json()
         target_date = data.get('date')
+        batch_start = data.get('batch_start', 0)  # 批次开始位置
+        batch_size = data.get('batch_size', 20)   # 每批处理数量
         
         if not target_date:
             return jsonify({
@@ -59,7 +61,7 @@ def start_screening():
                 'message': '请提供筛选日期'
             })
         
-        logger.info(f"开始筛选 {target_date} 的股票")
+        logger.info(f"开始筛选 {target_date} 的股票，批次 {batch_start}-{batch_start + batch_size}")
         
         try:
             from stock_screener import StockScreener
@@ -68,18 +70,25 @@ def start_screening():
             screener = StockScreener()
             
             logger.info("开始执行股票筛选...")
-            # 限制股票数量并增加延迟以避免Vercel超时
-            results = screener.screen_rescue_stocks(target_date, max_stocks=30)
-            summary = screener.get_screening_summary()
+            # 分批处理，避免超时
+            batch_results = screener.screen_rescue_stocks_batch(
+                target_date, 
+                batch_start=batch_start, 
+                batch_size=batch_size
+            )
             
-            logger.info(f"筛选完成，找到 {len(results)} 只符合条件的股票")
+            logger.info(f"批次处理完成")
             
             return jsonify({
                 'success': True,
-                'status': 'completed',
-                'message': f'筛选完成，找到 {len(results)} 只符合条件的股票',
-                'results': results,
-                'summary': summary
+                'status': 'batch_completed',
+                'batch_start': batch_start,
+                'batch_size': batch_size,
+                'results': batch_results['results'],
+                'total_stocks': batch_results['total_stocks'],
+                'processed_count': batch_results['processed_count'],
+                'has_more': batch_results['has_more'],
+                'message': f'已处理 {batch_results["processed_count"]}/{batch_results["total_stocks"]} 只股票，找到 {len(batch_results["results"])} 只符合条件的股票'
             })
             
         except Exception as e:

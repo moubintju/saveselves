@@ -57,6 +57,163 @@ function resetUI() {
     }
 }
 
+// 处理分批结果
+async function handleBatchResult(result) {
+    // 更新全局状态
+    totalStocks = result.total_stocks;
+    currentBatch++;
+    
+    // 累积结果
+    allResultsData = allResultsData.concat(result.results);
+    
+    // 更新进度
+    const progress = Math.floor((result.processed_count / result.total_stocks) * 100);
+    updateProgress(progress, result.message);
+    
+    // 实时显示当前累积的结果
+    displayBatchResults(allResultsData, {
+        total_count: allResultsData.length,
+        processed_stocks: result.processed_count,
+        total_stocks: result.total_stocks
+    });
+    
+    // 显示结果区域
+    hideAllSections();
+    resultsSection.style.display = 'block';
+    
+    // 如果还有更多批次，继续处理
+    if (result.has_more) {
+        // 延迟一下再继续下一批，避免请求过于频繁
+        setTimeout(() => {
+            continueNextBatch(document.getElementById('screening-date').value);
+        }, 2000);
+    } else {
+        // 所有批次完成
+        updateProgress(100, `筛选完成！共找到 ${allResultsData.length} 只符合条件的股票`);
+        resetUI();
+        
+        // 计算最终摘要
+        const finalSummary = calculateFinalSummary(allResultsData);
+        displayBatchResults(allResultsData, finalSummary);
+    }
+}
+
+// 继续下一批处理
+async function continueNextBatch(screeningDate) {
+    try {
+        const response = await fetch('/screen', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                date: screeningDate,
+                batch_start: currentBatch * 20,
+                batch_size: 20
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.success && result.status === 'batch_completed') {
+            handleBatchResult(result);
+        } else {
+            showError(result.message || '批次处理失败');
+            resetUI();
+        }
+        
+    } catch (error) {
+        console.error('批次处理失败:', error);
+        showError('批次处理失败，请重试');
+        resetUI();
+    }
+}
+
+// 显示分批结果
+function displayBatchResults(results, summary) {
+    // 存储当前结果数据供导出使用
+    currentResultsData = results;
+    
+    // 显示摘要信息
+    displayBatchSummary(summary);
+    
+    // 清空表格
+    resultsTableBody.innerHTML = '';
+    
+    if (results && results.length > 0) {
+        // 填充表格数据
+        results.forEach(stock => {
+            const row = createResultRow(stock);
+            resultsTableBody.appendChild(row);
+        });
+    } else {
+        // 无结果时显示提示
+        const noDataRow = document.createElement('tr');
+        noDataRow.innerHTML = `
+            <td colspan="7" style="text-align: center; padding: 40px; color: #666;">
+                暂未找到符合条件的股票，继续筛选中...
+            </td>
+        `;
+        resultsTableBody.appendChild(noDataRow);
+    }
+}
+
+// 显示分批摘要信息
+function displayBatchSummary(summary) {
+    const processedStocks = summary.processed_stocks || 0;
+    const totalStocks = summary.total_stocks || 0;
+    const foundCount = summary.total_count || 0;
+    
+    summaryInfo.innerHTML = `
+        <div class="summary-item">
+            <span class="value">${foundCount}</span>
+            <span class="label">符合条件股票</span>
+        </div>
+        <div class="summary-item">
+            <span class="value">${processedStocks}</span>
+            <span class="label">已处理股票</span>
+        </div>
+        <div class="summary-item">
+            <span class="value">${totalStocks}</span>
+            <span class="label">总股票数量</span>
+        </div>
+        <div class="summary-item">
+            <span class="value">${((processedStocks / totalStocks) * 100).toFixed(1)}%</span>
+            <span class="label">处理进度</span>
+        </div>
+    `;
+}
+
+// 计算最终摘要
+function calculateFinalSummary(results) {
+    if (!results || results.length === 0) {
+        return {
+            total_count: 0,
+            avg_change_pct: 0,
+            avg_volume: 0,
+            total_market_cap: 0
+        };
+    }
+    
+    const totalCount = results.length;
+    const avgChangePct = results.reduce((sum, stock) => sum + (stock.change_pct || 0), 0) / totalCount;
+    const avgVolume = results.reduce((sum, stock) => sum + (stock.volume || 0), 0) / totalCount;
+    const totalMarketCap = results.reduce((sum, stock) => sum + (stock.market_cap || 0), 0);
+    
+    return {
+        total_count: totalCount,
+        avg_change_pct: avgChangePct,
+        avg_volume: avgVolume,
+        total_market_cap: totalMarketCap,
+        processed_stocks: totalStocks,
+        total_stocks: totalStocks
+    };
+}
+
 // 开始筛选
 async function startScreening() {
     if (screeningInProgress) {
@@ -69,6 +226,11 @@ async function startScreening() {
         showError('请选择筛选日期');
         return;
     }
+    
+    // 重置分批变量
+    allResultsData = [];
+    currentBatch = 0;
+    totalStocks = 0;
     
     // 更新UI状态
     screeningInProgress = true;
@@ -88,7 +250,9 @@ async function startScreening() {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                date: screeningDate
+                date: screeningDate,
+                batch_start: currentBatch * 20,
+                batch_size: 20
             })
         });
         
@@ -99,8 +263,11 @@ async function startScreening() {
         const result = await response.json();
         
         if (result.success) {
-            // Vercel版本直接返回结果，不需要轮询
-            if (result.status === 'completed') {
+            if (result.status === 'batch_completed') {
+                // 处理分批结果
+                handleBatchResult(result);
+            } else if (result.status === 'completed') {
+                // 兼容旧版本完整结果
                 updateProgress(100, result.message);
                 displayResults(result.results, result.summary);
                 hideAllSections();
@@ -175,6 +342,9 @@ async function loadResults() {
 
 // 存储当前结果数据
 let currentResultsData = [];
+let allResultsData = [];  // 存储所有批次的结果
+let currentBatch = 0;
+let totalStocks = 0;
 
 // 显示筛选结果
 function displayResults(results, summary) {
