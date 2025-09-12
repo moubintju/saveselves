@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "stock_screener/app.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/stock_screener/app.py"
+    }
+  ],
+  "env": {
+    "PYTHONPATH": "./stock_screener"
+  },
+  "functions": {
+    "stock_screener/app.py": {
+      "maxDuration": 10
+    }
+  }
+}

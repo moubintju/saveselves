@@ -1,0 +1,199 @@
+import pandas as pd
+from datetime import datetime, timedelta
+import logging
+from data_fetcher import StockDataFetcher
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class StockScreener:
+    def __init__(self):
+        self.data_fetcher = StockDataFetcher()
+        self.screening_results = []
+        
+    def screen_rescue_stocks(self, target_date=None, progress_callback=None):
+        """筛选可以自救的股票"""
+        if target_date is None:
+            target_date = datetime.now().strftime("%Y-%m-%d")
+            
+        logger.info(f"开始筛选 {target_date} 的自救股票...")
+        
+        # 获取所有股票
+        all_stocks = self.data_fetcher.get_all_stocks()
+        if all_stocks is None or len(all_stocks) == 0:
+            logger.error("无法获取股票数据")
+            return []
+            
+        total_stocks = len(all_stocks)
+        logger.info(f"共需要筛选 {total_stocks} 只股票")
+        
+        rescue_stocks = []
+        processed_count = 0
+        
+        for index, stock in all_stocks.iterrows():
+            processed_count += 1
+            stock_code = stock['代码']
+            stock_name = stock['名称']
+            
+            # 报告进度
+            if progress_callback:
+                progress = int((processed_count / total_stocks) * 100)
+                progress_callback(progress, f"正在分析: {stock_name}({stock_code})")
+            
+            # 执行筛选逻辑
+            if self.check_rescue_criteria(stock, stock_code):
+                rescue_stocks.append({
+                    'code': stock_code,
+                    'name': stock_name,
+                    'current_price': stock.get('最新价', 0),
+                    'change_pct': stock.get('涨跌幅', 0),
+                    'volume': stock.get('成交量', 0),
+                    'turnover': stock.get('成交额', 0),
+                    'market_cap': stock.get('总市值', 0)
+                })
+                
+            # 每处理100只股票记录一次进度
+            if processed_count % 100 == 0:
+                logger.info(f"已处理 {processed_count}/{total_stocks} 只股票，找到 {len(rescue_stocks)} 只符合条件的股票")
+        
+        logger.info(f"筛选完成！共找到 {len(rescue_stocks)} 只符合自救条件的股票")
+        self.screening_results = rescue_stocks
+        return rescue_stocks
+    
+    def check_rescue_criteria(self, stock_data, stock_code):
+        """检查股票是否符合自救标准"""
+        try:
+            # 获取历史数据
+            hist_data = self.data_fetcher.get_stock_history(stock_code, days=5)
+            if hist_data is None or len(hist_data) < 2:
+                return False
+                
+            # 最新交易日数据
+            today_data = hist_data.iloc[-1]
+            yesterday_data = hist_data.iloc[-2] if len(hist_data) > 1 else None
+            
+            # 提取价格数据
+            today_open = today_data.get('开盘', 0)
+            today_close = today_data.get('收盘', 0)
+            today_high = today_data.get('最高', 0)
+            today_low = today_data.get('最低', 0)
+            today_volume = today_data.get('成交量', 0)
+            
+            if yesterday_data is not None:
+                yesterday_open = yesterday_data.get('开盘', 0)
+                yesterday_close = yesterday_data.get('收盘', 0)
+                yesterday_volume = yesterday_data.get('成交量', 0)
+            else:
+                return False
+            
+            # 条件1: 当天非涨停
+            if self.data_fetcher.is_limit_up(today_open, today_close, stock_code):
+                return False
+                
+            # 条件2: 当天为小阳线
+            if not self.data_fetcher.is_small_positive_line(today_open, today_close, today_high, today_low):
+                return False
+                
+            # 条件3: 当天成交量小于昨日成交量
+            if today_volume >= yesterday_volume:
+                return False
+                
+            # 条件4: 昨日非跌停，昨日非涨停
+            if (self.data_fetcher.is_limit_up(yesterday_open, yesterday_close, stock_code) or 
+                self.data_fetcher.is_limit_down(yesterday_open, yesterday_close, stock_code)):
+                return False
+                
+            # 条件5: 近3日内首次涨停（首板）- 需要更多历史数据
+            extended_hist = self.data_fetcher.get_stock_history(stock_code, days=10)
+            if not self.data_fetcher.check_first_limit_up_in_3_days(extended_hist, stock_code):
+                return False
+                
+            # 条件6: 主板股票 - 已在data_fetcher中过滤
+            # 条件7: 非ST股票 - 已在data_fetcher中过滤
+            
+            return True
+            
+        except Exception as e:
+            logger.warning(f"检查股票 {stock_code} 失败: {e}")
+            return False
+    
+    def get_screening_summary(self):
+        """获取筛选结果摘要"""
+        if not self.screening_results:
+            return {
+                'total_count': 0,
+                'avg_change_pct': 0,
+                'avg_volume': 0,
+                'total_market_cap': 0
+            }
+            
+        results_df = pd.DataFrame(self.screening_results)
+        
+        return {
+            'total_count': len(self.screening_results),
+            'avg_change_pct': results_df['change_pct'].mean(),
+            'avg_volume': results_df['volume'].mean(),
+            'total_market_cap': results_df['market_cap'].sum(),
+            'max_change_pct': results_df['change_pct'].max(),
+            'min_change_pct': results_df['change_pct'].min()
+        }
+    
+    def export_results_to_excel(self, filename=None):
+        """导出结果到Excel文件"""
+        if not self.screening_results:
+            logger.warning("没有筛选结果可导出")
+            return None
+            
+        if filename is None:
+            filename = f"rescue_stocks_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            
+        try:
+            df = pd.DataFrame(self.screening_results)
+            
+            # 添加中文列名
+            df.columns = ['股票代码', '股票名称', '最新价', '涨跌幅(%)', '成交量', '成交额', '总市值']
+            
+            # 格式化数据
+            df['涨跌幅(%)'] = df['涨跌幅(%)'].round(2)
+            df['最新价'] = df['最新价'].round(2)
+            
+            # 保存到results目录
+            filepath = f"results/{filename}"
+            df.to_excel(filepath, index=False, engine='openpyxl')
+            
+            logger.info(f"结果已导出到: {filepath}")
+            return filepath
+            
+        except Exception as e:
+            logger.error(f"导出Excel失败: {e}")
+            return None
+    
+    def export_results_to_csv(self, filename=None):
+        """导出结果到CSV文件"""
+        if not self.screening_results:
+            logger.warning("没有筛选结果可导出")
+            return None
+            
+        if filename is None:
+            filename = f"rescue_stocks_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            
+        try:
+            df = pd.DataFrame(self.screening_results)
+            
+            # 添加中文列名
+            df.columns = ['股票代码', '股票名称', '最新价', '涨跌幅(%)', '成交量', '成交额', '总市值']
+            
+            # 格式化数据
+            df['涨跌幅(%)'] = df['涨跌幅(%)'].round(2)
+            df['最新价'] = df['最新价'].round(2)
+            
+            # 保存到results目录
+            filepath = f"results/{filename}"
+            df.to_csv(filepath, index=False, encoding='utf-8-sig')
+            
+            logger.info(f"结果已导出到: {filepath}")
+            return filepath
+            
+        except Exception as e:
+            logger.error(f"导出CSV失败: {e}")
+            return None

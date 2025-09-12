@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A股"自救"股票筛选工具</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>A股"自救"股票筛选工具</h1>
+            <p class="subtitle">基于技术指标筛选具有自救潜力的优质股票</p>
+        </header>
+
+        <div class="screening-panel">
+            <div class="input-section">
+                <h3>筛选设置</h3>
+                <div class="form-group">
+                    <label for="screening-date">筛选日期:</label>
+                    <input type="date" id="screening-date" name="screening_date" value="{{ current_date }}">
+                </div>
+                <button id="start-screening" class="btn btn-primary">开始筛选</button>
+            </div>
+
+            <div class="criteria-section">
+                <h3>筛选标准</h3>
+                <ul class="criteria-list">
+                    <li>✓ 当天非涨停</li>
+                    <li>✓ 当天为小阳线（收盘价高于开盘价，涨幅适中）</li>
+                    <li>✓ 当天成交量小于昨日成交量</li>
+                    <li>✓ 昨日非跌停，昨日非涨停</li>
+                    <li>✓ 近3日内首次涨停（首板）</li>
+                    <li>✓ 主板股票</li>
+                    <li>✓ 非ST股票</li>
+                </ul>
+            </div>
+        </div>
+
+        <div id="progress-section" class="progress-section" style="display: none;">
+            <h3>筛选进度</h3>
+            <div class="progress-bar">
+                <div id="progress-fill" class="progress-fill"></div>
+            </div>
+            <p id="progress-text">准备开始筛选...</p>
+        </div>
+
+        <div id="results-section" class="results-section" style="display: none;">
+            <div class="results-header">
+                <h3>筛选结果</h3>
+                <div class="export-buttons">
+                    <button id="export-excel" class="btn btn-secondary">导出Excel</button>
+                    <button id="export-csv" class="btn btn-secondary">导出CSV</button>
+                </div>
+            </div>
+            
+            <div id="summary-info" class="summary-info">
+                <!-- 摘要信息将在这里显示 -->
+            </div>
+
+            <div class="table-container">
+                <table id="results-table" class="results-table">
+                    <thead>
+                        <tr>
+                            <th>股票代码</th>
+                            <th>股票名称</th>
+                            <th>最新价</th>
+                            <th>涨跌幅(%)</th>
+                            <th>成交量</th>
+                            <th>成交额</th>
+                            <th>总市值</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- 筛选结果将在这里显示 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="error-section" class="error-section" style="display: none;">
+            <div class="error-message">
+                <h3>筛选出错</h3>
+                <p id="error-text"></p>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2025 A股自救股票筛选工具 | 数据来源: AkShare</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
