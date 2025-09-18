@@ -88,7 +88,10 @@ def start_screening():
                 'total_stocks': batch_results['total_stocks'],
                 'processed_count': batch_results['processed_count'],
                 'has_more': batch_results['has_more'],
-                'message': f'已处理 {batch_results["processed_count"]}/{batch_results["total_stocks"]} 只股票，找到 {len(batch_results["results"])} 只符合条件的股票'
+                'api_calls_made': batch_results.get('api_calls_made', 0),
+                'api_success_rate': batch_results.get('api_success_rate', 0),
+                'verification_info': batch_results.get('verification_info', {}),
+                'message': f'✅ 已处理 {batch_results["processed_count"]}/{batch_results["total_stocks"]} 只股票，找到 {len(batch_results["results"])} 只符合条件的股票 | 📡 API调用: {batch_results.get("api_calls_made", 0)}次 (成功率: {batch_results.get("api_success_rate", 0):.1f}%)'
             })
             
         except Exception as e:
@@ -146,8 +149,189 @@ def get_status():
     return jsonify({
         'status': 'running',
         'timestamp': datetime.now().isoformat(),
-        'environment': 'vercel-simplified'
+        'environment': 'vercel'
     })
+
+@app.route('/verify-data')
+def verify_data():
+    """验证真实数据获取 - 显示前10只股票的真实数据"""
+    try:
+        from stock_screener import StockScreener
+        from data_fetcher import StockDataFetcher
+        
+        logger.info("开始验证真实数据获取...")
+        
+        data_fetcher = StockDataFetcher()
+        
+        # 获取前10只股票的真实数据
+        all_stocks = data_fetcher.get_all_stocks()
+        if all_stocks is None or len(all_stocks) == 0:
+            return jsonify({
+                'success': False,
+                'message': '无法获取股票数据'
+            }), 500
+        
+        # 取前10只股票
+        sample_stocks = all_stocks.head(10)
+        
+        verification_data = []
+        api_calls_count = 0
+        
+        for index, stock in sample_stocks.iterrows():
+            stock_code = stock['代码']
+            stock_name = stock['名称']
+            
+            # 获取历史数据验证
+            try:
+                hist_data = data_fetcher.get_stock_history(stock_code, days=3)
+                api_calls_count += 1
+                
+                verification_item = {
+                    'code': stock_code,
+                    'name': stock_name,
+                    'current_price': float(stock.get('最新价', 0)),
+                    'change_pct': float(stock.get('涨跌幅', 0)),
+                    'volume': int(stock.get('成交量', 0)),
+                    'market_cap': float(stock.get('总市值', 0)),
+                    'has_history_data': hist_data is not None,
+                    'history_days': len(hist_data) if hist_data is not None else 0,
+                    'data_timestamp': datetime.now().isoformat()
+                }
+                
+                if hist_data is not None and len(hist_data) > 0:
+                    latest_data = hist_data.iloc[-1]
+                    verification_item['latest_close'] = float(latest_data.get('收盘', 0))
+                    verification_item['latest_date'] = str(latest_data.get('日期', ''))
+                
+                verification_data.append(verification_item)
+                
+            except Exception as e:
+                logger.error(f"获取股票 {stock_code} 历史数据失败: {e}")
+                verification_data.append({
+                    'code': stock_code,
+                    'name': stock_name,
+                    'error': str(e),
+                    'data_timestamp': datetime.now().isoformat()
+                })
+        
+        return jsonify({
+            'success': True,
+            'message': f'成功验证 {len(verification_data)} 只股票的真实数据',
+            'total_stocks_available': len(all_stocks),
+            'api_calls_made': api_calls_count,
+            'verification_samples': verification_data,
+            'data_source': 'akshare',
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"数据验证失败: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'数据验证失败: {str(e)}',
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/api-stats')
+def get_api_statistics():
+    """获取API调用统计信息"""
+    try:
+        from stock_screener import StockScreener
+        
+        screener = StockScreener()
+        detailed_stats = screener.get_detailed_statistics()
+        
+        return jsonify({
+            'success': True,
+            'message': '成功获取API统计信息',
+            'statistics': detailed_stats,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"获取API统计失败: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'获取API统计失败: {str(e)}',
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/data-verification-detailed')
+def get_detailed_verification():
+    """获取详细的数据验证信息"""
+    try:
+        from stock_screener import StockScreener
+        from data_fetcher import StockDataFetcher
+        
+        logger.info("🔍 开始详细数据验证...")
+        
+        data_fetcher = StockDataFetcher()
+        
+        # 获取所有股票数据并记录API调用
+        logger.info("📡 正在获取股票列表...")
+        all_stocks = data_fetcher.get_all_stocks()
+        
+        if all_stocks is None or len(all_stocks) == 0:
+            return jsonify({
+                'success': False,
+                'message': '无法获取股票数据'
+            }), 500
+        
+        # 测试3只股票的历史数据
+        sample_stocks = all_stocks.head(3)
+        verification_samples = []
+        
+        for index, stock in sample_stocks.iterrows():
+            stock_code = stock['代码']
+            stock_name = stock['名称']
+            
+            logger.info(f"📊 测试股票: {stock_name}({stock_code})")
+            
+            # 获取历史数据
+            hist_data = data_fetcher.get_stock_history(stock_code, days=5)
+            
+            sample_info = {
+                'code': stock_code,
+                'name': stock_name,
+                'current_price': float(stock.get('最新价', 0)),
+                'change_pct': float(stock.get('涨跌幅', 0)),
+                'has_history': hist_data is not None,
+                'history_length': len(hist_data) if hist_data is not None else 0
+            }
+            
+            if hist_data is not None and len(hist_data) > 0:
+                latest = hist_data.iloc[-1]
+                sample_info['latest_close'] = float(latest.get('收盘', 0))
+                sample_info['latest_date'] = str(latest.get('日期', ''))
+            
+            verification_samples.append(sample_info)
+        
+        # 获取完整的API统计
+        api_stats = data_fetcher.get_api_statistics()
+        
+        return jsonify({
+            'success': True,
+            'message': f'✅ 数据验证完成，确认使用真实API数据',
+            'verification_result': {
+                'data_source': 'akshare',
+                'total_stocks_available': len(all_stocks),
+                'sample_stocks_tested': len(verification_samples),
+                'api_calls_made': api_stats['total_calls'],
+                'api_success_rate': api_stats['success_rate'],
+                'data_confirmed_real': api_stats['data_source_verified'],
+                'verification_samples': verification_samples,
+                'api_statistics': api_stats
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"详细数据验证失败: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'数据验证失败: {str(e)}',
+            'timestamp': datetime.now().isoformat()
+        }), 500
 
 @app.errorhandler(404)
 def not_found_error(error):

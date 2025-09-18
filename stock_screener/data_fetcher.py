@@ -10,11 +10,17 @@ logger = logging.getLogger(__name__)
 class StockDataFetcher:
     def __init__(self):
         self.market_data = None
+        self.api_calls_count = 0
+        self.api_calls_log = []
+        self.data_source_verified = False
+        self.last_api_call_time = None
         
     def get_all_stocks(self):
         """获取所有A股股票列表"""
         try:
             logger.info("正在获取A股股票列表...")
+            self._log_api_call("get_all_stocks", "获取A股股票列表")
+            
             # 获取A股实时行情数据
             stock_data = ak.stock_zh_a_spot_em()
             
@@ -31,10 +37,13 @@ class StockDataFetcher:
             
             logger.info(f"获取到 {len(non_st_stocks)} 只主板非ST股票")
             self.market_data = non_st_stocks
+            self.data_source_verified = True
+            self._log_api_success("get_all_stocks", f"成功获取{len(non_st_stocks)}只股票")
             return non_st_stocks
             
         except Exception as e:
             logger.error(f"获取股票列表失败: {e}")
+            self._log_api_error("get_all_stocks", str(e))
             return None
     
     def get_stock_history(self, symbol, days=5):
@@ -42,6 +51,8 @@ class StockDataFetcher:
         try:
             # 在每次API调用前增加延迟
             time.sleep(0.05)  # 50ms延迟
+            
+            self._log_api_call("get_stock_history", f"获取股票{symbol}历史数据({days}天)")
             
             # 获取历史数据，period可选："daily", "weekly", "monthly"
             # adjust可选："", "qfq", "hfq" 分别表示不复权、前复权、后复权
@@ -56,11 +67,15 @@ class StockDataFetcher:
             if hist_data is not None and len(hist_data) >= days:
                 # 按日期排序，确保最新数据在最后
                 hist_data = hist_data.sort_values('日期')
+                self._log_api_success("get_stock_history", f"成功获取股票{symbol}历史数据({len(hist_data)}天)")
                 return hist_data.tail(days)
-            return None
+            else:
+                self._log_api_warning("get_stock_history", f"股票{symbol}历史数据不足({len(hist_data) if hist_data is not None else 0}天)")
+                return None
             
         except Exception as e:
             logger.warning(f"获取股票 {symbol} 历史数据失败: {e}")
+            self._log_api_error("get_stock_history", f"股票{symbol}: {str(e)}")
             return None
     
     def is_limit_up(self, open_price, close_price, stock_code):
@@ -158,3 +173,73 @@ class StockDataFetcher:
         except Exception as e:
             logger.warning(f"获取股票 {symbol} 基本信息失败: {e}")
             return None
+    
+    def _log_api_call(self, api_name, description):
+        """记录API调用"""
+        self.api_calls_count += 1
+        self.last_api_call_time = datetime.now()
+        
+        call_info = {
+            'call_id': self.api_calls_count,
+            'api_name': api_name,
+            'description': description,
+            'timestamp': self.last_api_call_time.isoformat(),
+            'status': 'calling'
+        }
+        
+        self.api_calls_log.append(call_info)
+        logger.info(f"📡 API调用 #{self.api_calls_count}: {api_name} - {description}")
+    
+    def _log_api_success(self, api_name, result_info):
+        """记录API调用成功"""
+        if self.api_calls_log:
+            self.api_calls_log[-1]['status'] = 'success'
+            self.api_calls_log[-1]['result'] = result_info
+            self.api_calls_log[-1]['completed_at'] = datetime.now().isoformat()
+        
+        logger.info(f"✅ API调用成功: {api_name} - {result_info}")
+    
+    def _log_api_error(self, api_name, error_info):
+        """记录API调用失败"""
+        if self.api_calls_log:
+            self.api_calls_log[-1]['status'] = 'error'
+            self.api_calls_log[-1]['error'] = error_info
+            self.api_calls_log[-1]['completed_at'] = datetime.now().isoformat()
+        
+        logger.error(f"❌ API调用失败: {api_name} - {error_info}")
+    
+    def _log_api_warning(self, api_name, warning_info):
+        """记录API调用警告"""
+        if self.api_calls_log:
+            self.api_calls_log[-1]['status'] = 'warning'
+            self.api_calls_log[-1]['warning'] = warning_info
+            self.api_calls_log[-1]['completed_at'] = datetime.now().isoformat()
+        
+        logger.warning(f"⚠️ API调用警告: {api_name} - {warning_info}")
+    
+    def get_api_statistics(self):
+        """获取API调用统计信息"""
+        if not self.api_calls_log:
+            return {
+                'total_calls': 0,
+                'successful_calls': 0,
+                'failed_calls': 0,
+                'warning_calls': 0,
+                'data_source_verified': self.data_source_verified,
+                'last_call_time': None
+            }
+        
+        successful = len([call for call in self.api_calls_log if call.get('status') == 'success'])
+        failed = len([call for call in self.api_calls_log if call.get('status') == 'error'])
+        warnings = len([call for call in self.api_calls_log if call.get('status') == 'warning'])
+        
+        return {
+            'total_calls': self.api_calls_count,
+            'successful_calls': successful,
+            'failed_calls': failed,
+            'warning_calls': warnings,
+            'success_rate': (successful / self.api_calls_count * 100) if self.api_calls_count > 0 else 0,
+            'data_source_verified': self.data_source_verified,
+            'last_call_time': self.last_api_call_time.isoformat() if self.last_api_call_time else None,
+            'api_calls_log': self.api_calls_log[-10:]  # 只返回最近10次调用
+        }
