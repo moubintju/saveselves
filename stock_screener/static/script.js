@@ -11,6 +11,7 @@ const resultsSection = document.getElementById('results-section');
 const errorSection = document.getElementById('error-section');
 const errorText = document.getElementById('error-text');
 const summaryInfo = document.getElementById('summary-info');
+const apiStatsInfo = document.getElementById('api-stats-info');
 const resultsTableBody = document.querySelector('#results-table tbody');
 const exportExcelBtn = document.getElementById('export-excel');
 const exportCsvBtn = document.getElementById('export-csv');
@@ -75,7 +76,7 @@ async function handleBatchResult(result) {
         total_count: allResultsData.length,
         processed_stocks: result.processed_count,
         total_stocks: result.total_stocks
-    });
+    }, result);
     
     // 显示结果区域
     hideAllSections();
@@ -89,12 +90,12 @@ async function handleBatchResult(result) {
         }, 2000);
     } else {
         // 所有批次完成
-        updateProgress(100, `筛选完成！共找到 ${allResultsData.length} 只符合条件的股票`);
+        updateProgress(100, `筛选完成！共查询 ${result.processed_count} 只股票，找到 ${allResultsData.length} 只符合条件的股票`);
         resetUI();
         
         // 计算最终摘要
         const finalSummary = calculateFinalSummary(allResultsData);
-        displayBatchResults(allResultsData, finalSummary);
+        displayBatchResults(allResultsData, finalSummary, result);
     }
 }
 
@@ -134,12 +135,17 @@ async function continueNextBatch(screeningDate) {
 }
 
 // 显示分批结果
-function displayBatchResults(results, summary) {
+function displayBatchResults(results, summary, batchResult = null) {
     // 存储当前结果数据供导出使用
     currentResultsData = results;
     
     // 显示摘要信息
     displayBatchSummary(summary);
+    
+    // 显示API统计信息
+    if (batchResult) {
+        displayApiStats(batchResult);
+    }
     
     // 清空表格
     resultsTableBody.innerHTML = '';
@@ -175,7 +181,7 @@ function displayBatchSummary(summary) {
         </div>
         <div class="summary-item">
             <span class="value">${processedStocks}</span>
-            <span class="label">已处理股票</span>
+            <span class="label">已查询股票</span>
         </div>
         <div class="summary-item">
             <span class="value">${totalStocks}</span>
@@ -183,9 +189,43 @@ function displayBatchSummary(summary) {
         </div>
         <div class="summary-item">
             <span class="value">${((processedStocks / totalStocks) * 100).toFixed(1)}%</span>
-            <span class="label">处理进度</span>
+            <span class="label">查询进度</span>
         </div>
     `;
+}
+
+// 显示API统计信息
+function displayApiStats(result) {
+    const apiCalls = result.api_calls_made || 0;
+    const apiSuccessRate = result.api_success_rate || 0;
+    const isRealData = result.verification_info?.real_data_confirmed || false;
+    
+    if (apiCalls > 0) {
+        apiStatsInfo.style.display = 'block';
+        apiStatsInfo.innerHTML = `
+            <h4>📊 API调用统计</h4>
+            <div class="api-stats-grid">
+                <div class="api-stat-item">
+                    <span class="api-value">📡 ${apiCalls}</span>
+                    <span class="api-label">API调用次数</span>
+                </div>
+                <div class="api-stat-item">
+                    <span class="api-value">✅ ${apiSuccessRate.toFixed(1)}%</span>
+                    <span class="api-label">调用成功率</span>
+                </div>
+                <div class="api-stat-item">
+                    <span class="api-value">${isRealData ? '🔗 真实数据' : '❌ 测试数据'}</span>
+                    <span class="api-label">数据来源确认</span>
+                </div>
+                <div class="api-stat-item">
+                    <span class="api-value">🏭 AkShare</span>
+                    <span class="api-label">数据提供商</span>
+                </div>
+            </div>
+        `;
+    } else {
+        apiStatsInfo.style.display = 'none';
+    }
 }
 
 // 计算最终摘要

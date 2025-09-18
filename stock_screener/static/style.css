@@ -240,6 +240,57 @@ header h1 {
     font-size: 0.9rem;
 }
 
+/* API统计信息样式 */
+.api-stats-info {
+    margin-bottom: 25px;
+    padding: 20px;
+    background: linear-gradient(135deg, #e8f4f8 0%, #f0f8ff 100%);
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+}
+
+.api-stats-info h4 {
+    color: #2c3e50;
+    margin-bottom: 15px;
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.api-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+}
+
+.api-stat-item {
+    text-align: center;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 6px;
+    border: 1px solid rgba(102, 126, 234, 0.2);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.api-stat-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.api-stat-item .api-value {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: #667eea;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.api-stat-item .api-label {
+    color: #666;
+    font-size: 0.85rem;
+}
+
 /* 表格样式 */
 .table-container {
     overflow-x: auto;
@@ -340,6 +391,10 @@ footer {
         grid-template-columns: 1fr 1fr;
     }
     
+    .api-stats-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    
     .results-table {
         font-size: 12px;
     }
@@ -352,6 +407,10 @@ footer {
 
 @media (max-width: 480px) {
     .summary-info {
+        grid-template-columns: 1fr;
+    }
+    
+    .api-stats-grid {
         grid-template-columns: 1fr;
     }
     
