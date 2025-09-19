@@ -188,7 +188,7 @@ function displayBatchSummary(summary) {
             <span class="label">总股票数量</span>
         </div>
         <div class="summary-item">
-            <span class="value">${((processedStocks / totalStocks) * 100).toFixed(1)}%</span>
+            <span class="value">${totalStocks > 0 ? ((processedStocks / totalStocks) * 100).toFixed(1) : 0}%</span>
             <span class="label">查询进度</span>
         </div>
     `;
@@ -197,7 +197,7 @@ function displayBatchSummary(summary) {
 // 显示API统计信息
 function displayApiStats(result) {
     const apiCalls = result.api_calls_made || 0;
-    const apiSuccessRate = result.api_success_rate || 0;
+    const apiSuccessRate = isNaN(result.api_success_rate) ? 0 : (result.api_success_rate || 0);
     const isRealData = result.verification_info?.real_data_confirmed || false;
     
     if (apiCalls > 0) {

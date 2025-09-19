@@ -13,6 +13,9 @@ app = Flask(__name__)
 # 添加股票筛选模块路径
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'stock_screener'))
 
+# 全局筛选器实例，保持会话状态
+global_screener = None
+
 # 配置模板和静态文件路径
 template_dir = os.path.join(os.path.dirname(__file__), '..', 'stock_screener', 'templates')
 static_dir = os.path.join(os.path.dirname(__file__), '..', 'stock_screener', 'static')
@@ -66,8 +69,15 @@ def start_screening():
         try:
             from stock_screener import StockScreener
             
-            logger.info("正在创建股票筛选器...")
-            screener = StockScreener()
+            # 使用全局筛选器实例保持API统计
+            global global_screener
+            if global_screener is None or batch_start == 0:
+                logger.info("正在创建股票筛选器...")
+                global_screener = StockScreener()
+            else:
+                logger.info("使用现有筛选器实例...")
+            
+            screener = global_screener
             
             logger.info("开始执行股票筛选...")
             # 分批处理，避免超时
@@ -236,10 +246,15 @@ def verify_data():
 def get_api_statistics():
     """获取API调用统计信息"""
     try:
-        from stock_screener import StockScreener
+        global global_screener
+        if global_screener is None:
+            return jsonify({
+                'success': False,
+                'message': '筛选器未初始化，请先开始筛选',
+                'timestamp': datetime.now().isoformat()
+            }), 400
         
-        screener = StockScreener()
-        detailed_stats = screener.get_detailed_statistics()
+        detailed_stats = global_screener.get_detailed_statistics()
         
         return jsonify({
             'success': True,
